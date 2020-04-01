@@ -22,6 +22,8 @@
 #include "MagneticField/Records/interface/IdealMagneticFieldRecord.h"
 
 #include "RecoTracker/MkFit/interface/MkFitInputWrapper.h"
+#include "RecoTracker/MkFit/interface/MkFitGeometry.h"
+#include "RecoTracker/Record/interface/TrackerRecoGeometryRecord.h"
 
 // ROOT
 #include "Math/SVector.h"
@@ -49,10 +51,16 @@ private:
                    int& totalHits,
                    const TrackerTopology& ttopo,
                    const TransientTrackingRecHitBuilder& ttrhBuilder,
-                   const mkfit::LayerNumberConverter& lnc) const;
+                   const MkFitGeometry& mkFitGeom) const;
 
-  bool passCCC(const SiStripRecHit2D& hit, const DetId hitId) const;
-  bool passCCC(const SiPixelRecHit& hit, const DetId hitId) const;
+  float clusterCharge(const SiStripRecHit2D& hit, DetId hitId) const;
+  nullptr_t clusterCharge(const SiPixelRecHit& hit, DetId hitId) const;
+
+  bool passCCC(float charge) const;
+  bool passCCC(nullptr_t) const;  //pixel
+
+  void setDetails(mkfit::Hit& mhit, const SiPixelCluster& cluster, const int shortId, nullptr_t) const;
+  void setDetails(mkfit::Hit& mhit, const SiStripCluster& cluster, const int shortId, float charge) const;
 
   mkfit::TrackVec convertSeeds(const edm::View<TrajectorySeed>& seeds,
                                const MkFitHitIndexMap& hitIndexMap,
@@ -70,6 +78,7 @@ private:
   edm::ESGetToken<TransientTrackingRecHitBuilder, TransientRecHitRecord> ttrhBuilderToken_;
   edm::ESGetToken<TrackerTopology, TrackerTopologyRcd> ttopoToken_;
   edm::ESGetToken<MagneticField, IdealMagneticFieldRecord> mfToken_;
+  edm::ESGetToken<MkFitGeometry, TrackerRecoGeometryRecord> mkFitGeomToken_;
   edm::EDPutTokenT<MkFitInputWrapper> putToken_;
   const float minGoodStripCharge_;
 };
@@ -85,6 +94,7 @@ MkFitInputConverter::MkFitInputConverter(edm::ParameterSet const& iConfig)
           iConfig.getParameter<edm::ESInputTag>("ttrhBuilder"))},
       ttopoToken_{esConsumes<TrackerTopology, TrackerTopologyRcd>()},
       mfToken_{esConsumes<MagneticField, IdealMagneticFieldRecord>()},
+      mkFitGeomToken_{esConsumes<MkFitGeometry, TrackerRecoGeometryRecord>()},
       putToken_{produces<MkFitInputWrapper>()},
       minGoodStripCharge_{static_cast<float>(
           iConfig.getParameter<edm::ParameterSet>("minGoodStripCharge").getParameter<double>("value"))} {}
@@ -106,31 +116,41 @@ void MkFitInputConverter::fillDescriptions(edm::ConfigurationDescriptions& descr
 }
 
 void MkFitInputConverter::produce(edm::StreamID iID, edm::Event& iEvent, const edm::EventSetup& iSetup) const {
-  mkfit::LayerNumberConverter lnc{mkfit::TkLayout::phase1};
-
   // Then import hits
   const auto& ttrhBuilder = iSetup.getData(ttrhBuilderToken_);
   const auto& ttopo = iSetup.getData(ttopoToken_);
+  const auto& mkFitGeom = iSetup.getData(mkFitGeomToken_);
 
-  std::vector<mkfit::HitVec> mkFitHits(lnc.nLayers());
+  std::vector<mkfit::HitVec> mkFitHits(mkFitGeom.layerNumberConverter().nLayers());
   MkFitHitIndexMap hitIndexMap;
   int totalHits = 0;  // I need to have a global hit index in order to have the hit remapping working?
   // Process strips first for better memory allocation pattern
-  convertHits(iEvent.get(stripRphiRecHitToken_), mkFitHits, hitIndexMap, totalHits, ttopo, ttrhBuilder, lnc);
-  convertHits(iEvent.get(stripStereoRecHitToken_), mkFitHits, hitIndexMap, totalHits, ttopo, ttrhBuilder, lnc);
-  convertHits(iEvent.get(pixelRecHitToken_), mkFitHits, hitIndexMap, totalHits, ttopo, ttrhBuilder, lnc);
+  convertHits(iEvent.get(stripRphiRecHitToken_), mkFitHits, hitIndexMap, totalHits, ttopo, ttrhBuilder, mkFitGeom);
+  convertHits(iEvent.get(stripStereoRecHitToken_), mkFitHits, hitIndexMap, totalHits, ttopo, ttrhBuilder, mkFitGeom);
+  convertHits(iEvent.get(pixelRecHitToken_), mkFitHits, hitIndexMap, totalHits, ttopo, ttrhBuilder, mkFitGeom);
 
   // Then import seeds
   auto mkFitSeeds = convertSeeds(iEvent.get(seedToken_), hitIndexMap, ttrhBuilder, iSetup.getData(mfToken_));
 
-  iEvent.emplace(putToken_, std::move(hitIndexMap), std::move(mkFitHits), std::move(mkFitSeeds), std::move(lnc));
+  iEvent.emplace(putToken_, std::move(hitIndexMap), std::move(mkFitHits), std::move(mkFitSeeds));
 }
 
-bool MkFitInputConverter::passCCC(const SiStripRecHit2D& hit, const DetId hitId) const {
-  return (siStripClusterTools::chargePerCM(hitId, hit.firstClusterRef().stripCluster()) > minGoodStripCharge_);
+float MkFitInputConverter::clusterCharge(const SiStripRecHit2D& hit, DetId hitId) const {
+  return siStripClusterTools::chargePerCM(hitId, hit.firstClusterRef().stripCluster());
+}
+nullptr_t MkFitInputConverter::clusterCharge(const SiPixelRecHit& hit, DetId hitId) const { return nullptr; }
+
+bool MkFitInputConverter::passCCC(float charge) const { return charge > minGoodStripCharge_; }
+
+bool MkFitInputConverter::passCCC(nullptr_t) const { return true; }
+
+void MkFitInputConverter::setDetails(mkfit::Hit& mhit, const SiPixelCluster& cluster, int shortId, nullptr_t) const {
+  mhit.setupAsPixel(shortId, cluster.sizeX(), cluster.sizeY());
 }
 
-bool MkFitInputConverter::passCCC(const SiPixelRecHit& hit, const DetId hitId) const { return true; }
+void MkFitInputConverter::setDetails(mkfit::Hit& mhit, const SiStripCluster& cluster, int shortId, float charge) const {
+  mhit.setupAsStrip(shortId, charge, cluster.amplitudes().size());
+}
 
 template <typename HitCollection>
 void MkFitInputConverter::convertHits(const HitCollection& hits,
@@ -139,7 +159,7 @@ void MkFitInputConverter::convertHits(const HitCollection& hits,
                                       int& totalHits,
                                       const TrackerTopology& ttopo,
                                       const TransientTrackingRecHitBuilder& ttrhBuilder,
-                                      const mkfit::LayerNumberConverter& lnc) const {
+                                      const MkFitGeometry& mkFitGeom) const {
   if (hits.empty())
     return;
   auto isPlusSide = [&ttopo](const DetId& detid) {
@@ -148,8 +168,8 @@ void MkFitInputConverter::convertHits(const HitCollection& hits,
 
   {
     const DetId detid{hits.ids().back()};
-    const auto ilay =
-        lnc.convertLayerNumber(detid.subdetId(), ttopo.layer(detid), false, ttopo.isStereo(detid), isPlusSide(detid));
+    const auto ilay = mkFitGeom.layerNumberConverter().convertLayerNumber(
+        detid.subdetId(), ttopo.layer(detid), false, ttopo.isStereo(detid), isPlusSide(detid));
     // Do initial reserves to minimize further memory allocations
     const auto& lastClusterRef = hits.data().back().firstClusterRef();
     hitIndexMap.resizeByClusterIndex(lastClusterRef.id(), lastClusterRef.index());
@@ -161,11 +181,14 @@ void MkFitInputConverter::convertHits(const HitCollection& hits,
     const auto subdet = detid.subdetId();
     const auto layer = ttopo.layer(detid);
     const auto isStereo = ttopo.isStereo(detid);
-    const auto ilay = lnc.convertLayerNumber(subdet, layer, false, isStereo, isPlusSide(detid));
+    const auto ilay =
+        mkFitGeom.layerNumberConverter().convertLayerNumber(subdet, layer, false, isStereo, isPlusSide(detid));
+    const auto uniqueIdInLayer = mkFitGeom.uniqueIdInLayer(ilay, detid.rawId());
     hitIndexMap.increaseLayerSize(ilay, detset.size());  // to minimize memory allocations
 
     for (const auto& hit : detset) {
-      if (!passCCC(hit, detid))
+      const auto charge = clusterCharge(hit, detid);
+      if (!passCCC(charge))
         continue;
 
       const auto& gpos = hit.globalPosition();
@@ -188,6 +211,7 @@ void MkFitInputConverter::convertHits(const HitCollection& hits,
                          MkFitHitIndexMap::MkFitHit{static_cast<int>(mkFitHits[ilay].size()), ilay},
                          &hit);
       mkFitHits[ilay].emplace_back(pos, err, totalHits);
+      setDetails(mkFitHits[ilay].back(), *(hit.cluster()), uniqueIdInLayer, charge);
       ++totalHits;
     }
   }
