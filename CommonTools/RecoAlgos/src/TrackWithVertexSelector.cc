@@ -10,7 +10,9 @@ namespace {
 
 TrackWithVertexSelector::TrackWithVertexSelector(const edm::ParameterSet &iConfig, edm::ConsumesCollector &iC)
     : numberOfValidHits_(iConfig.getParameter<uint32_t>("numberOfValidHits")),
+      numberOfValidHitsForGood_(iConfig.getParameter<uint32_t>("numberOfValidHitsForGood")),
       numberOfValidPixelHits_(iConfig.getParameter<uint32_t>("numberOfValidPixelHits")),
+      numberOfValidPixelHitsForGood_(iConfig.getParameter<uint32_t>("numberOfValidPixelHitsForGood")),
       numberOfLostHits_(iConfig.getParameter<uint32_t>("numberOfLostHits")),
       normalizedChi2_(iConfig.getParameter<double>("normalizedChi2")),
       ptMin_(iConfig.getParameter<double>("ptMin")),
@@ -48,7 +50,10 @@ void TrackWithVertexSelector::init(const edm::Event &event) {
 
 bool TrackWithVertexSelector::testTrack(const reco::Track &t) const {
   using std::abs;
-  if ((t.numberOfValidHits() >= numberOfValidHits_) &&
+  if ((t.numberOfValidHits() >= numberOfValidHitsForGood_) || (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHitsForGood_)) {
+    return true;
+  }
+  else if ((t.numberOfValidHits() >= numberOfValidHits_) &&
       (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHits_) &&
       (t.numberOfLostHits() <= numberOfLostHits_) && (t.normalizedChi2() <= normalizedChi2_) &&
       (t.ptError() / t.pt() * std::max(1., t.normalizedChi2()) <= ptErrorCut_) &&
@@ -63,6 +68,10 @@ bool TrackWithVertexSelector::testTrack(const reco::TrackRef &tref) const { retu
 
 bool TrackWithVertexSelector::testVertices(const reco::Track &t, const reco::VertexCollection &vtxs) const {
   bool ok = false;
+  if ((t.numberOfValidHits() >= numberOfValidHitsForGood_) || (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHitsForGood_)) {
+    ok = true;
+    return ok;
+  }
   if (!vtxs.empty()) {
     unsigned int tested = 1;
     for (reco::VertexCollection::const_iterator it = vtxs.begin(), ed = vtxs.end(); it != ed; ++it) {
@@ -83,6 +92,10 @@ bool TrackWithVertexSelector::testVertices(const reco::TrackRef &tref, const rec
   const auto &t = *tref;
   const bool timeAvailable = timescoll_ != nullptr && timeresoscoll_ != nullptr;
   bool ok = false;
+  if ((t.numberOfValidHits() >= numberOfValidHitsForGood_) || (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHitsForGood_)) {
+    ok = true;
+    return ok;
+  }
   if (!vtxs.empty()) {
     unsigned int tested = 1;
     for (reco::VertexCollection::const_iterator it = vtxs.begin(), ed = vtxs.end(); it != ed; ++it) {

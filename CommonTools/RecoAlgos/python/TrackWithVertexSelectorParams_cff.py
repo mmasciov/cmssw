@@ -14,8 +14,10 @@ trackWithVertexSelectorParams = cms.PSet(
     # quality cuts (valid hits, normalized chi2)
     normalizedChi2 = cms.double(999999.),
     numberOfValidHits = cms.uint32(0),
+    numberOfValidHitsForGood = cms.uint32(999), ## if number of valid hits >= numberOfMaxValidHits, no selection is applied
     numberOfLostHits = cms.uint32(999), ## at most 999 lost hits
     numberOfValidPixelHits = cms.uint32(0), ## at least <n> hits in the pixels
+    numberOfValidPixelHitsForGood = cms.uint32(999), ## if number of valid pixel hits >= numberOfMaxValidPixelHits, no selection is applied
     ptErrorCut = cms.double(0.2), ## [pTError/pT]*max(1,normChi2) <= ptErrorCut
     quality = cms.string("highPurity"), # quality cut as defined in reco::TrackBase
     # compatibility with a vertex ?
