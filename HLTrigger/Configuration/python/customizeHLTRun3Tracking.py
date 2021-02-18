@@ -1,13 +1,17 @@
+import copy
+import FWCore.ParameterSet.Config as cms
+from HeterogeneousCore.CUDACore.SwitchProducerCUDA import SwitchProducerCUDA
+from HLTrigger.Configuration.common import *
+from HLTrigger.Configuration.customizeHLTforPatatrack import *
+from Configuration.Eras.Modifier_run3_common_cff import run3_common
+
 def customizeHLTRun3Tracking(process):
 
-    from HLTrigger.Configuration.customizeHLTforPatatrack import *
-    process = customizeHLTforPatatrack(process)
-    
+    process = customizeHLTforPatatrack(process)    
     if hasattr(process,'hltPixelTracksCUDA'):
         process.hltPixelTracksCUDA.includeJumpingForwardDoublets = cms.bool(True)
         process.hltPixelTracksCUDA.minHitsPerNtuplet             = cms.uint32(3)
         process.hltPixelTracksCUDA.idealConditions = cms.bool(True)
-
     if hasattr(process,'hltPixelTracksSoA'):
         process.hltPixelTracksSoA.cpu.includeJumpingForwardDoublets = cms.bool(True)
         process.hltPixelTracksSoA.cpu.minHitsPerNtuplet             = cms.uint32(3)
