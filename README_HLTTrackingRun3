@@ -27,5 +27,6 @@ hltGetConfiguration /dev/CMSSW_12_0_0/GRun --paths HLTriggerFirstPath,MC_Reduced
 git cms-remote add mmasciov
 git fetch mmasciov
 git cherry-pick ee03aa936d3246ae43d093479120f2d3315f7bdf # only needed to use quadruplets from ALL pixel vertices
-git cherry-pick cbbe7b2f13e0529868a632b44811de0e753e0562 # to get actual customisation functions
+git cherry-pick cbbe7b2f13e0529868a632b44811de0e753e0562 # 
+git cherry-pick 93e322332e9024ad9d58821d48317c00f62e623a # to get actual customisation functions
 scram b -j 12
