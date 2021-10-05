@@ -208,7 +208,7 @@ def customizeHLTforRun3TrackingAllPixelVertices(process):
         process.hltIter0PFlowTrackCutClassifier = cms.EDProducer("TrackCutClassifier",
             src = cms.InputTag("hltIter0PFlowCtfWithMaterialTracks"),
             beamspot = cms.InputTag("hltOnlineBeamSpot"),
-            vertices = cms.InputTag("hltTrimmedPixelVertices"),
+            vertices = cms.InputTag("hltPixelVertices"),
             qualityCuts = cms.vdouble(-0.7, 0.1, 0.7),
             mva = cms.PSet(
                 minPixelHits = cms.vint32(0, 0, 0),
