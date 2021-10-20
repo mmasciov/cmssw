@@ -2,6 +2,7 @@
 
 #include "CommonTools/RecoAlgos/interface/TrackFullCloneSelectorBase.h"
 #include "CommonTools/RecoAlgos/interface/TrackWithVertexSelector.h"
+#include "RecoPixelVertexing/PixelVertexFinding/interface/PVClusterComparer.h"
 
 namespace reco {
   namespace modules {

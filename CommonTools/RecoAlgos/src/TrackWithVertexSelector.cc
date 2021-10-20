@@ -10,7 +10,9 @@ namespace {
 
 TrackWithVertexSelector::TrackWithVertexSelector(const edm::ParameterSet &iConfig, edm::ConsumesCollector &iC)
     : numberOfValidHits_(iConfig.getParameter<uint32_t>("numberOfValidHits")),
+      numberOfValidHitsForGood_(iConfig.getParameter<uint32_t>("numberOfValidHitsForGood")),
       numberOfValidPixelHits_(iConfig.getParameter<uint32_t>("numberOfValidPixelHits")),
+      numberOfValidPixelHitsForGood_(iConfig.getParameter<uint32_t>("numberOfValidPixelHitsForGood")),
       numberOfLostHits_(iConfig.getParameter<uint32_t>("numberOfLostHits")),
       normalizedChi2_(iConfig.getParameter<double>("normalizedChi2")),
       ptMin_(iConfig.getParameter<double>("ptMin")),
@@ -28,7 +30,19 @@ TrackWithVertexSelector::TrackWithVertexSelector(const edm::ParameterSet &iConfi
       vtxFallback_(iConfig.getParameter<bool>("vtxFallback")),
       zetaVtx_(iConfig.getParameter<double>("zetaVtx")),
       rhoVtx_(iConfig.getParameter<double>("rhoVtx")),
-      nSigmaDtVertex_(iConfig.getParameter<double>("nSigmaDtVertex")) {}
+      zetaVtxScale_(iConfig.getParameter<double>("zetaVtxScale")),
+      rhoVtxScale_(iConfig.getParameter<double>("rhoVtxScale")),
+      zetaVtxSig_(iConfig.getParameter<double>("zetaVtxSig")),
+      rhoVtxSig_(iConfig.getParameter<double>("rhoVtxSig")),
+      nSigmaDtVertex_(iConfig.getParameter<double>("nSigmaDtVertex")),
+      fractionSumPt2_(iConfig.getParameter<double>("fractionSumPt2")),
+      minSumPt2_(iConfig.getParameter<double>("minSumPt2")),
+      track_chi2_max_(iConfig.getParameter<double>("track_chi2_max")),
+      track_prob_min_(iConfig.getParameter<double>("track_prob_min")),
+      track_pt_max_(iConfig.getParameter<double>("track_pt_max")),
+      track_pt_min_(iConfig.getParameter<double>("track_pt_min")) {
+  pvComparer_ = new PVClusterComparer(track_pt_min_, track_pt_max_, track_chi2_max_, track_prob_min_);
+}
 
 TrackWithVertexSelector::~TrackWithVertexSelector() {}
 
@@ -48,12 +62,16 @@ void TrackWithVertexSelector::init(const edm::Event &event) {
 
 bool TrackWithVertexSelector::testTrack(const reco::Track &t) const {
   using std::abs;
-  if ((t.numberOfValidHits() >= numberOfValidHits_) &&
-      (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHits_) &&
-      (t.numberOfLostHits() <= numberOfLostHits_) && (t.normalizedChi2() <= normalizedChi2_) &&
-      (t.ptError() / t.pt() * std::max(1., t.normalizedChi2()) <= ptErrorCut_) &&
-      (t.quality(t.qualityByName(quality_))) && (t.pt() >= ptMin_) && (t.pt() <= ptMax_) && (abs(t.eta()) <= etaMax_) &&
-      (abs(t.eta()) >= etaMin_) && (abs(t.dz()) <= dzMax_) && (abs(t.d0()) <= d0Max_)) {
+  if ((t.numberOfValidHits() >= numberOfValidHitsForGood_) ||
+      (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHitsForGood_)) {
+    return true;
+  } else if ((t.numberOfValidHits() >= numberOfValidHits_) &&
+             (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHits_) &&
+             (t.numberOfLostHits() <= numberOfLostHits_) && (t.normalizedChi2() <= normalizedChi2_) &&
+             (t.ptError() / t.pt() * std::max(1., t.normalizedChi2()) <= ptErrorCut_) &&
+             (t.quality(t.qualityByName(quality_))) && (t.pt() >= ptMin_) && (t.pt() <= ptMax_) &&
+             (abs(t.eta()) <= etaMax_) && (abs(t.eta()) >= etaMin_) && (abs(t.dz()) <= dzMax_) &&
+             (abs(t.d0()) <= d0Max_)) {
     return true;
   }
   return false;
@@ -63,12 +81,33 @@ bool TrackWithVertexSelector::testTrack(const reco::TrackRef &tref) const { retu
 
 bool TrackWithVertexSelector::testVertices(const reco::Track &t, const reco::VertexCollection &vtxs) const {
   bool ok = false;
+  if ((t.numberOfValidHits() >= numberOfValidHitsForGood_) ||
+      (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHitsForGood_)) {
+    ok = true;
+    return ok;
+  }
   if (!vtxs.empty()) {
     unsigned int tested = 1;
+    reco::Vertex firstVertex = *(vtxs.begin());
+    pvComparer_->setChisquareQuantile();
+    double sumpt2first = pvComparer_->pTSquaredSum(firstVertex);
     for (reco::VertexCollection::const_iterator it = vtxs.begin(), ed = vtxs.end(); it != ed; ++it) {
-      if ((std::abs(t.dxy(it->position())) < rhoVtx_) && (std::abs(t.dz(it->position())) < zetaVtx_)) {
-        ok = true;
-        break;
+      reco::Vertex thisVertex = *(it);
+      pvComparer_->setChisquareQuantile();
+      double sumpt2 = pvComparer_->pTSquaredSum(thisVertex);
+      if (sumpt2 >= sumpt2first * fractionSumPt2_ && sumpt2 > minSumPt2_ && tested <= nVertices_) {
+        if ((std::abs(t.dxy(it->position())) < rhoVtx_) && (std::abs(t.dz(it->position())) < zetaVtx_)) {
+          ok = true;
+          break;
+        }
+      } else {
+        if ((std::abs(t.dxy(it->position())) * rhoVtxScale_ < rhoVtx_) &&
+            (std::abs(t.dz(it->position())) * zetaVtxScale_ < zetaVtx_) &&
+            ((t.dxy(it->position()) / std::hypot(t.dxyError(), std::hypot(it->xError(), it->yError()))) < rhoVtxSig_) &&
+            ((t.dz(it->position()) / std::hypot(t.dzError(), it->zError())) < zetaVtxSig_)) {
+          ok = true;
+          break;
+        }
       }
       if (tested++ >= nVertices_)
         break;
@@ -83,8 +122,16 @@ bool TrackWithVertexSelector::testVertices(const reco::TrackRef &tref, const rec
   const auto &t = *tref;
   const bool timeAvailable = timescoll_ != nullptr && timeresoscoll_ != nullptr;
   bool ok = false;
+  if ((t.numberOfValidHits() >= numberOfValidHitsForGood_) ||
+      (static_cast<unsigned int>(t.hitPattern().numberOfValidPixelHits()) >= numberOfValidPixelHitsForGood_)) {
+    ok = true;
+    return ok;
+  }
   if (!vtxs.empty()) {
     unsigned int tested = 1;
+    reco::Vertex firstVertex = *(vtxs.begin());
+    pvComparer_->setChisquareQuantile();
+    double sumpt2first = pvComparer_->pTSquaredSum(firstVertex);
     for (reco::VertexCollection::const_iterator it = vtxs.begin(), ed = vtxs.end(); it != ed; ++it) {
       const bool useTime = timeAvailable && it->t() != 0.;
       float time = useTime ? (*timescoll_)[tref] : -1.f;
@@ -99,10 +146,24 @@ bool TrackWithVertexSelector::testVertices(const reco::TrackRef &tref, const rec
       const double vtxSigmaT2 = it->tError() * it->tError();
       const double vtxTrackErr = std::sqrt(vtxSigmaT2 + timeReso * timeReso);
 
-      if ((std::abs(t.dxy(it->position())) < rhoVtx_) && (std::abs(t.dz(it->position())) < zetaVtx_) &&
-          (!useTime || (std::abs(time - it->t()) / vtxTrackErr < nSigmaDtVertex_))) {
-        ok = true;
-        break;
+      reco::Vertex thisVertex = *(it);
+      pvComparer_->setChisquareQuantile();
+      double sumpt2 = pvComparer_->pTSquaredSum(thisVertex);
+      if (sumpt2 >= sumpt2first * fractionSumPt2_ && sumpt2 > minSumPt2_ && tested <= nVertices_) {
+        if ((std::abs(t.dxy(it->position())) < rhoVtx_) && (std::abs(t.dz(it->position())) < zetaVtx_) &&
+            (!useTime || (std::abs(time - it->t()) / vtxTrackErr < nSigmaDtVertex_))) {
+          ok = true;
+          break;
+        }
+      } else {
+        if ((std::abs(t.dxy(it->position())) * rhoVtxScale_ < rhoVtx_) &&
+            (std::abs(t.dz(it->position())) * zetaVtxScale_ < zetaVtx_) &&
+            ((t.dxy(it->position()) / std::hypot(t.dxyError(), std::hypot(it->xError(), it->yError()))) < rhoVtxSig_) &&
+            ((t.dz(it->position()) / std::hypot(t.dzError(), it->zError())) < zetaVtxSig_) &&
+            (!useTime || (std::abs(time - it->t()) / vtxTrackErr < nSigmaDtVertex_))) {
+          ok = true;
+          break;
+        }
       }
       if (tested++ >= nVertices_)
         break;
