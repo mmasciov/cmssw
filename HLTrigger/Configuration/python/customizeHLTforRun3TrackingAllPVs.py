@@ -57,7 +57,7 @@ def customizeHLTforRun3TrackingAllPVs(process, allPVsForCutClassifier=True):
         process.HLTIter0PSetTrajectoryFilterIT.minimumNumberOfHits = cms.int32(3)
 
     if hasattr(process,'hltSiStripRawToClustersFacility'):
-        process.hltSiStripRawToClustersFacility.onDemand = cms.bool( False )
+        process.hltSiStripRawToClustersFacility.onDemand = cms.bool( True )
 
     process.hltPixelTracksClean = cms.EDProducer("TrackWithVertexSelector",
         src = cms.InputTag('hltPixelTracks'),
