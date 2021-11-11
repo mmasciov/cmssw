@@ -31,7 +31,7 @@ def customizeHLTforRun3Tracking(process):
         process.HLTIter0PSetTrajectoryFilterIT.minimumNumberOfHits = cms.int32(3)
 
     if hasattr(process,'hltSiStripRawToClustersFacility'):
-        process.hltSiStripRawToClustersFacility.onDemand = cms.bool( False )
+        process.hltSiStripRawToClustersFacility.onDemand = cms.bool( True )
 
     if hasattr(process,'hltIter0PFLowPixelSeedsFromPixelTracks'):
         process.hltIter0PFLowPixelSeedsFromPixelTracks.includeFourthHit = cms.bool(True)
